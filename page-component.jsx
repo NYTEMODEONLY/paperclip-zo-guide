@@ -85,7 +85,8 @@ const TroubleshootingTable = () => {
   const rows = [
     ['pnpm install fails with permission errors', 'Ensure you\'re running as root (default on Zo). If cloning into /home/workspace, permissions should be fine.'],
     ['Embedded PostgreSQL won\'t start', 'PostgreSQL refuses to run as root. Make sure the Zo service entrypoint uses su to switch to the postgres user.'],
-    ['Claude Code refuses to run', 'Claude Code won\'t run as root. The postgres user needs its own Claude credentials — copy them from a non-root user who authenticated.'],
+    ['Claude Code refuses to run', 'Claude Code won\'t run as root. The postgres user needs its own Claude credentials — use claude setup-token (not claude login) for long-lived tokens.'],
+    ['Claude Code auth expires every 6 hours', 'You used claude login instead of claude setup-token. Browser OAuth tokens expire quickly. Run claude setup-token on your laptop to generate a long-lived token, then copy it to the server.'],
     ['no_new_privs blocks su/sudo from postgres', 'Zo containers set no_new_privs. The postgres user can\'t escalate privileges. Run agents as postgres directly, not via su from postgres.'],
     ['Service disappears after Zo reprovision', 'You used supervisor manually instead of Zo services. Register via mcporter call zo.register_user_service — these survive reprovisions.'],
     ['BETTER_AUTH_SECRET errors', 'Generate a proper secret: openssl rand -hex 32. Must be a 64-character hex string.'],
@@ -529,13 +530,37 @@ tail -50 /dev/shm/paperclip.log`}</CodeBlock>
         </P>
 
         <H3>Authenticate Claude Code</H3>
-        <CodeBlock title="bash">{`# Create a temporary user if you don't have one
+        <Warn>
+          <strong>Use <InlineCode>claude setup-token</InlineCode>, not <InlineCode>claude login</InlineCode>.</strong> The browser-based <InlineCode>claude login</InlineCode> generates short-lived tokens that expire every ~6 hours — completely unsuitable for a 24/7 server. <InlineCode>setup-token</InlineCode> generates a long-lived OAuth token designed for headless environments like Zo.
+        </Warn>
+        <P>
+          Run this on a machine where you have a browser (e.g., your laptop):
+        </P>
+        <CodeBlock title="bash — run on your laptop">{`claude setup-token`}</CodeBlock>
+        <P>
+          This will authenticate via browser and output a long-lived <InlineCode>sk-ant-oat01-</InlineCode> token. Copy it.
+        </P>
+        <P>
+          Then on your Zo Computer, create a user and set up the credentials:
+        </P>
+        <CodeBlock title="bash — run on Zo Computer">{`# Create a user if you don't have one
 useradd -m -s /bin/bash zoey
 
-# Login to Claude as that user
-su - zoey -c 'claude login'
-# Follow the auth URL in your browser`}</CodeBlock>
-        <Info>You need to open the auth URL in your browser to complete the OAuth flow. The CLI will print the URL — copy it and paste it into your browser.</Info>
+# Write the credentials file with your setup-token
+mkdir -p /home/zoey/.claude
+cat > /home/zoey/.claude/.credentials.json << 'EOF'
+{
+  "claudeAiOauth": {
+    "accessToken": "YOUR_SETUP_TOKEN_HERE",
+    "scopes": ["user:inference", "user:profile", "user:sessions:claude_code"],
+    "subscriptionType": "max"
+  }
+}
+EOF
+chown -R zoey:zoey /home/zoey/.claude`}</CodeBlock>
+        <Info>
+          The <InlineCode>setup-token</InlineCode> command requires an interactive terminal with a browser, so it cannot be run directly on the Zo Computer. Generate the token locally and transfer it. The token is long-lived — you won't need to repeat this regularly.
+        </Info>
 
         <H3>Copy credentials to postgres</H3>
         <CodeBlock title="bash">{`# Copy the credential files
@@ -548,7 +573,7 @@ chown -R postgres:postgres /home/postgres/.claude /home/postgres/.claude.json`}<
         <H3>Verify it works</H3>
         <CodeBlock title="bash">{`su -s /bin/bash postgres -c 'claude --dangerously-skip-permissions --print -p "say hello"'
 # Expected output: hello`}</CodeBlock>
-        <P>If you see "hello" (or similar), Claude Code is working as the postgres user. If you get auth errors, re-run <InlineCode>claude login</InlineCode> as the non-root user and copy the files again.</P>
+        <P>If you see "hello" (or similar), Claude Code is working as the postgres user. If you get auth errors, verify your <InlineCode>setup-token</InlineCode> is correct and the credentials files were copied properly.</P>
         <Warn>The <InlineCode>--dangerously-skip-permissions</InlineCode> flag is for testing only. When configuring agents in the Paperclip dashboard, use proper permission settings for production workloads.</Warn>
 
         <Divider />
