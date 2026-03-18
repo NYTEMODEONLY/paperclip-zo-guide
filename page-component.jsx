@@ -322,6 +322,7 @@ export default function PaperclipZoGuide() {
             ['#step6', 'Step 6: Set Up Claude Code Credentials'],
             ['#step7', 'Step 7: Why Not Just Run as Root?'],
             ['#step8', 'Step 8: Access the Dashboard'],
+            ['#model-policy', 'Zo Agent Model Policy'],
             ['#gotchas', 'Gotchas & Troubleshooting'],
             ['#quickref', 'Quick Reference'],
           ].map(([href, label], i) => (
@@ -621,6 +622,37 @@ chown -R postgres:postgres /home/postgres/.claude /home/postgres/.claude.json`}<
           <LI><strong style={{color:'#e4e4e7'}}>Never use <InlineCode>/root/</InlineCode></strong> as the cwd — the postgres user can't write there</LI>
         </UL>
         <Warn>If agent tasks fail with "permission denied," the cwd is almost certainly set to a directory the postgres user can't access. Always use <InlineCode>/home/workspace/</InlineCode> or directories you've explicitly granted access to.</Warn>
+
+        <Divider />
+
+        {/* ═══ MODEL POLICY ═══ */}
+        <H2 id="model-policy">Zo Agent Model Policy</H2>
+        <P>
+          When Paperclip agents create <strong style={{color:'#e4e4e7'}}>Zo Agents</strong> (scheduled automations via <InlineCode>zo.create_agent</InlineCode>), they <strong style={{color:'#e4e4e7'}}>must</strong> use free or cheap models. This is non-negotiable.
+        </P>
+        <Warn>
+          <strong style={{color:'#eab308'}}>A single Zo Agent running every 5 minutes on <InlineCode>openai:gpt-5.3-codex</InlineCode> burned over $25 in one day.</strong> Zo Agents consume Zo credits — real money. Premium models on automated schedules are a financial hazard.
+        </Warn>
+        <P>
+          Interactive sessions use Claude via OAuth (free with your subscription). But Zo Agents run on Zo credits, which are finite and billed per use. The rule:
+        </P>
+        <UL>
+          <LI><strong style={{color:'#22c55e'}}>✅ Always use:</strong> <InlineCode>vercel:minimax/minimax-m2.5</InlineCode> or <InlineCode>moonshotai:kimi-k2</InlineCode></LI>
+          <LI><strong style={{color:'#ef4444'}}>❌ Never use:</strong> <InlineCode>openai:gpt-5.3-codex</InlineCode>, <InlineCode>anthropic:claude-opus-4-6</InlineCode>, or any premium model</LI>
+        </UL>
+        <P>
+          If a Paperclip agent proposes creating a Zo Agent, <strong style={{color:'#e4e4e7'}}>verify the model before approving</strong>. Health checks, polling, notifications, and reports do not need frontier models.
+        </P>
+
+        <H3>Verify Existing Agents</H3>
+        <P>Check what agents are currently running and what models they use:</P>
+        <CodeBlock title="bash">{`mcporter call zo.list_agents`}</CodeBlock>
+        <P>Review the output for any agent using a premium model. If you find one, fix it immediately:</P>
+        <CodeBlock title="bash">{`# Fix an agent that's on the wrong model
+mcporter call zo.edit_agent \\
+  agent_id="YOUR_AGENT_ID" \\
+  model="vercel:minimax/minimax-m2.5"`}</CodeBlock>
+        <Info>Make this a regular check. Any time you deploy new Paperclip agents or update agent configurations, verify that no Zo Agents were created with premium models.</Info>
 
         <Divider />
 
